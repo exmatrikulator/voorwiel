@@ -1,0 +1,6 @@
+FROM node:lts
+EXPOSE 8080
+WORKDIR /app
+
+ADD docker-*.sh /usr/local/bin/
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
