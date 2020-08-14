@@ -1,4 +1,5 @@
 FROM node:lts AS builder
+ENV NODE_ENV wuppertal
 WORKDIR /app
 COPY package*.json /app/
 RUN npm ci
