@@ -2,7 +2,7 @@ var ENV = 'production';
 
 var TITLE = "Schweberad - Schwebebahn-Ersatzverkehr mit Fahrrädern";
 var NAME = "Schweberad";
-var SYSTEM_URL = "http://api.schweberad.de";
+var SYSTEM_URL = "https://api.schweberad.de";
 var API_ROOT = SYSTEM_URL + "/api";
 var GBFS_URL = SYSTEM_URL + "/gbfs/gbfs.json";
 
