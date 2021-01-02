@@ -1,7 +1,3 @@
-import Vue from 'vue';
-
-const appConfig = require(`../config/config.${process.env.NODE_ENV}.js`).default;
-
-Vue.prototype.$appConfig = appConfig;
-
-export default appConfig;
+let env = process.env.VUE_APP_VOORWIEL_ENV || process.env.NODE_ENV;
+let config = require(`../config/config.${env}.js`);
+module.exports = config;

@@ -1,13 +1,13 @@
 import Vue from 'vue';
 import Vuex from 'vuex';
 import axios from 'axios';
+import config from '../config';
 
 Vue.use(Vuex);
 
 const axiosWithAuth = function (state) {
-  let appConfig = this._vm.$appConfig;
   return axios.create({
-    baseURL: appConfig.API_ROOT,
+    baseURL: config.API_ROOT,
     headers: { 'Authorization': `Token ${state.authToken}` }
   })
 }
@@ -15,10 +15,18 @@ const axiosWithAuth = function (state) {
 const getCurrentPosition = (options) => {
   if (navigator.geolocation) {
     return new Promise(
-      (resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, options)
+      (resolve, reject) => {
+        let timeout = options.timeout || 5000;
+        let rejected = false;
+        let pt = setTimeout(() => { rejected = true; reject(); }, timeout);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => { clearTimeout(pt); if (!rejected) resolve(pos); },
+          (err) => { clearTimeout(pt); if (!rejected) reject(err); },
+          options);
+      }
     )
   }
-  return Promise.resolve();
+  return Promise.reject();
 }
 
 const unpackErrorMessage = (err) => {
@@ -41,7 +49,9 @@ export default new Vuex.Store({
     authToken: null,
     user: undefined,
     rents: [],
-    appError: ''
+    appError: '',
+    gbfs: null,
+    lock: {},
   },
   actions: {
     AUTHENTICATE: function({ commit, dispatch }, authToken) {
@@ -86,57 +96,47 @@ export default new Vuex.Store({
     LOGOUT: function({ commit }) {
       commit("CLEAR_USER");
     },
-    START_RENT: function({ dispatch }, bikeNumber) {
-      return getCurrentPosition({
-          timeout: 3000,
-          enableHighAccuracy: true,
-          maximumAge: 20000
-        }).then(
-          (location) => dispatch("START_RENT_INTERNAL", bikeNumber, location),
-          () => dispatch("START_RENT_INTERNAL", bikeNumber)
-        );
-    },
-    START_RENT_INTERNAL: function({ dispatch, state }, bikeNumber, location) {
-      let data = {bike: bikeNumber};
+    START_RENT: async function({ dispatch, state }, bikeNumber) {
+      let location;
+      try {
+        location = await getCurrentPosition({ timeout: 3000, enableHighAccuracy: true, maximumAge: 20000 });
+      } catch (_ignore) { /* */ }
+
+      let data = { bike: bikeNumber };
       if (location && location.coords && location.coords.accuracy < 20) {
         data['lat'] = location.coords.latitude;
         data['lng'] = location.coords.longitude;
       }
-      return axiosWithAuth.call(this, state)
-        .post('/rent', data)
-        .then(
-          response => {
-            dispatch("UPDATE_RENTS")
-            return response.data;
-          },
-          err => unpackErrorMessage(err)
-        );
+
+      try {
+        let response = await axiosWithAuth.call(this, state).post('/rent', data);
+        dispatch("UPDATE_RENTS");
+        return response.data;
+      } catch (err) {
+        throw unpackErrorMessage(err);
+      }
     },
-    END_RENT: function({ dispatch }, rentId) {
-      return getCurrentPosition({
-          timeout: 3000,
-          enableHighAccuracy: true,
-          maximumAge: 20000
-        }).then(
-          (location) => dispatch("END_RENT_INTERNAL", rentId, location),
-          () => dispatch("END_RENT_INTERNAL", rentId)
-        );
-    },
-    END_RENT_INTERNAL: function({ dispatch, state }, rentId, location) {
+    END_RENT: async function({ dispatch, commit, state }, rentId) {
+      let location;
+      try {
+        location = await getCurrentPosition({ timeout: 3000, enableHighAccuracy: true, maximumAge: 20000 });
+      } catch(_ignore) { /* */ }
+
       let data = {};
       if (location && location.coords && location.coords.accuracy < 50) {
         data['lat'] = location.coords.latitude;
         data['lng'] = location.coords.longitude;
       }
-      return axiosWithAuth.call(this, state)
-        .post(`/rent/${rentId}/finish`, data)
-        .then(
-          response => {
-            dispatch("UPDATE_RENTS")
-            return response.data;
-          },
-          err => unpackErrorMessage(err)
-        );
+
+      try {
+        let finish_url = state.rents.find((el) => el.id == rentId).finish_url;
+        let response = await axiosWithAuth.call(this, state).post(finish_url, data);
+        dispatch("UPDATE_RENTS");
+        commit("REMOVE_LOCK", rentId);
+        return response.data;
+      } catch (err) {
+        throw unpackErrorMessage(err);
+      }
     },
     UPDATE_RENTS: function({ commit, state, getters }) {
       if (!getters.isAuthenticated) { return; }
@@ -145,6 +145,20 @@ export default new Vuex.Store({
         .then(response => {
           commit('SET_RENTS', response.data)
         })
+    },
+    RENT_UNLOCK: async function({ commit, state }, rentId) {
+      try {
+        let unlock_url = state.rents.find((el) => el.id == rentId).unlock_url;
+        let response = await axiosWithAuth.call(this, state).post(unlock_url);
+        if (response.data.success) {
+          commit("SET_LOCK", { rentId: rentId, data: response.data.data });
+          return response.data.data;
+        } else {
+          throw { response };
+        }
+      } catch (err) {
+        throw unpackErrorMessage(err);
+      }
     }
   },
   mutations: {
@@ -152,6 +166,7 @@ export default new Vuex.Store({
       state.authToken = null;
       state.user = undefined;
       state.rents = [];
+      state.lock = [];
       localStorage.removeItem(LS_AUTH_TOKEN_KEY);
     },
     SET_USER: (state, { user }) => {
@@ -164,13 +179,47 @@ export default new Vuex.Store({
     SET_RENTS: (state, rents) => {
       state.rents = rents;
     },
+    SET_LOCK: (state, { rentId, data }) => {
+      Vue.set(state.lock, rentId, data);
+    },
+    REMOVE_LOCK: (state, rentId) => {
+      if (Object.prototype.hasOwnProperty.call(state.lock, rentId)) {
+        delete state.lock[rentId];
+      }
+    },
     SET_APPERROR: (state, message) => {
       state.appError = message;
+    },
+    SET_GBFS: (state, data) => {
+      state.gbfs = data;
     }
   },
   getters: {
     isAuthenticated(state) {
       return !!state.authToken;
+    },
+    getGBFSBikeWithDetails: (state) => (id) => {
+      let bike = state.gbfs.freeBikeStatus.data.bikes.find((b) => b.bike_id == id);
+      if (typeof bike === "undefined") return null;
+      if (typeof bike.vehicle_type_id !== "undefined" && typeof state.gbfs.vehicleTypes !== "undefined") {
+        let vehicle_type = state.gbfs.vehicleTypes.data.vehicle_types.find((vt) => vt.vehicle_type_id == bike.vehicle_type_id);
+        return {bike, vehicle_type};
+      }
+      return {bike};
+    },
+    getGBFSStationWithDetails: (state) => (id) => {
+      let station = state.gbfs.stations.data.stations.find((s) => s.station_id == id);
+      if (typeof station === "undefined") return null;
+      let station_status = state.gbfs.stationStatus.data.stations.find((s) => s.station_id == station.station_id);
+      if (typeof station_status !== "undefined") {
+        if (typeof station_status.vehicle_docks_available !== "undefined" ||
+            typeof station_status.vehicles.find((v) => typeof v.vehicle_type_id !== "undefined") !== "undefined") {
+          let vehicle_types = state.gbfs.vehicleTypes.data.vehicle_types;
+          return {station, station_status, vehicle_types};
+        }
+        return {station, station_status};
+      }
+      return {station};
     }
   },
   modules: {},

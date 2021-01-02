@@ -1,13 +1,10 @@
 <template>
   <v-dialog v-model="show" max-width="400">
     <v-card>
-      <v-card-title class="title" primary-title>
-        {{ $t('message.rent.rent')}}
-      </v-card-title>
       <v-form v-model="valid" ref="rentBikeForm" @submit.prevent="startRent">
-        <v-container class="py-0">
+        <v-container class="pb-0">
           <v-row v-if="rentError">
-            <v-col col="12" md="12">
+            <v-col col="12" md="12" class="py-0">
              <v-alert
                 dense
                 outlined
@@ -18,8 +15,8 @@
               </v-alert>
             </v-col>
           </v-row>
-          <v-row>
-            <v-col cols="6" md="6">
+          <v-row class="pt-5">
+            <v-col cols="6" md="6" class="py-0 pr-0">
               <v-text-field
                   type="text"
                   :label="$t('message.rent.bikenumber')"
@@ -32,10 +29,9 @@
                   pattern="[0-9]*"
                 ></v-text-field>
             </v-col>
-            <v-col cols="6" md="6" class="text-center">
+            <v-col cols="6" md="6" class="py-0 text-right">
               <v-btn class="mt-2" color="success" v-bind:disabled="!valid" :loading="loading" @click="startRent">
-                <v-icon>mdi-lock-open-variant</v-icon>&nbsp;
-                <span>{{ $t('message.rent.unlock') }}</span>
+                {{ $t('message.rent.rent') }}
               </v-btn>
             </v-col>
           </v-row>
@@ -50,11 +46,12 @@
       >
         <v-list-item-content>
           <v-list-item-title>{{ $t('message.rent.bikenumber') }}: {{rent.bike.bike_number}}</v-list-item-title>
-          <v-list-item-subtitle v-if="rent.bike.lock">{{ $t('message.rent.unlockcode') }}: <span class="rent-unlock-key">{{rent.bike.lock.unlock_key}}</span></v-list-item-subtitle>
+          <v-list-item-subtitle v-if="rent.bike.lock_type">
+            <RentLock :rent="rent" />
+          </v-list-item-subtitle>
           <v-list-item-subtitle>{{ $t('message.rent.renting-for') }} <ticking-time :datetime="rent.rent_start" /></v-list-item-subtitle>
           <v-btn color="success" @click="endRent(rent.id)" v-bind:loading="loadingRents.includes(rent.id)">
-            <v-icon>mdi-lock</v-icon>&nbsp;
-            <span>{{ $t('message.rent.finish-rent') }}</span>
+            {{ $t('message.rent.finish-rent') }}
           </v-btn>
         </v-list-item-content>
       </v-list-item>
@@ -64,10 +61,12 @@
 
 <script>
   import { mapState } from 'vuex';
+  import { mdiLock, mdiLockOpenVariant } from '@mdi/js'
   import TickingTime from "./TickingTime.vue";
+  import RentLock from "./RentLock.vue";
 
   export default {
-    components: {TickingTime},
+    components: { TickingTime, RentLock },
     props: ['bikeId'],
     data() {
       return {
@@ -85,6 +84,11 @@
             return pattern.test(value) || 'Please only numbers';
           },
         ],
+
+        mdi: {
+          lock: mdiLock,
+          lockOpenVariant: mdiLockOpenVariant
+        }
       }
     },
     computed: {
@@ -94,24 +98,22 @@
       startRent() {
         this.loading = true;
         this.rentError = '';
-        this.$store.dispatch("START_RENT", this.bikenumber).then(() => {
-          this.$refs.rentBikeForm.reset()
-          this.loading = false;
-        }).catch((err) => {
-          this.rentError = err;
-          this.loading = false;
-        });
+        this.$store.dispatch("START_RENT", this.bikenumber)
+          .then(() => this.$refs.rentBikeForm.reset(),
+                (err) => this.rentError = err)
+          .finally(() => this.loading = false);
       },
       endRent(rentId) {
         this.rentError = '';
         this.loadingRents.push(rentId);
-        this.$store.dispatch("END_RENT", rentId).catch(err => {
-          this.rentError = err;
-          let index = this.loadingRents.indexOf(rentId);
-          if (index >= 0) {
-            this.loadingRents.splice(index, 1);
-          }
-        });
+        this.$store.dispatch("END_RENT", rentId)
+          .catch(err => {
+            this.rentError = err;
+            let index = this.loadingRents.indexOf(rentId);
+            if (index >= 0) {
+              this.loadingRents.splice(index, 1);
+            }
+          });
       }
     },
     mounted() {

@@ -9,13 +9,21 @@ import Login from '../components/Login';
 import LoginReturn from '../components/LoginReturn';
 import Rent from '../components/Rent';
 import Support from '../components/Support';
+import VehicleDetail from '../components/VehicleDetail';
+import StationDetail from '../components/StationDetail';
+
+const NoOpComponent = Vue.component('no-op', {
+  functional: true,
+  render () { return null; }
+});
 
 const router = new VueRouter({
   mode: 'history',
   routes: [
-    { path: '/login', component: Login },
+    { path: '/', component: NoOpComponent },
+    { path: '/login', name: 'login', component: Login },
     { path: '/login/return', component: LoginReturn },
-    { path: '/rent', component: Rent, meta: { requiresAuth: true }, props: (route) => {
+    { path: '/rent', name: 'rent', component: Rent, meta: { requiresAuth: true }, props: (route) => {
       if (route.query && route.query.id) {
         return { bikeId: route.query.id }
       }
@@ -25,7 +33,10 @@ const router = new VueRouter({
       const { params } = to;
       return { path: '/rent', query: { id: params.id } };
     }},
-    { path: '/support', component: Support },
+    { path: '/v/:id', name: 'vehicle', component: VehicleDetail, props: true },
+    { path: '/s/:id', name: 'station', component: StationDetail, props: true },
+    { path: '/support', name: 'support', component: Support },
+    { path: '*', redirect: '/' }
   ],
 });
 
