@@ -10,12 +10,12 @@
       <v-toolbar-items>
         <About />
 
-        <v-btn text dark v-if="!user" to="login" color="success">
+        <v-btn text dark v-if="!user && login_enabled" to="login" color="success">
           <span class="hidden-xs-only">{{ $t('message.app.login') }}</span>
           <v-icon right>mdi-login</v-icon>
         </v-btn>
 
-        <v-menu left bottom v-if="user">
+        <v-menu left bottom v-if="user && login_enabled">
           <template v-slot:activator="{ on }">
             <v-btn text v-on="on">
               <v-icon>mdi-dots-vertical</v-icon>
@@ -44,16 +44,27 @@
         {{ $t('message.app.unvalidated-message') }}
       </v-alert>
 
+      <v-alert
+        v-if="!login_enabled"
+        border="bottom"
+        colored-border
+        type="warning"
+        dense
+        class="mb-0"
+      >
+        {{ $t('message.banner.html') }}
+      </v-alert>
+
       <gbfs-view url="" />
       <router-view></router-view>
       <div class="rent-buttonarea">
         <v-btn fab dark x-small v-if="hasSupport" to="support" color="red" class="support-button">
           <v-icon>mdi-help-circle-outline</v-icon>
         </v-btn>
-        <v-btn rounded x-large color="success" v-if="!user" to="login">
+        <v-btn rounded x-large color="success" v-if="!user && login_enabled" to="login">
           <v-icon>mdi-login</v-icon>&nbsp;<span>{{ $t('message.app.login') }}</span>
         </v-btn>
-        <RentButton v-if="user" />
+        <RentButton v-if="user && login_enabled" />
       </div>
       <AppError />
     </v-content>
@@ -75,7 +86,8 @@
     data: function() {
       return {
         name: this.$appConfig.NAME,
-        hasSupport: !blank(this.$appConfig.SUPPORT_URL)
+        hasSupport: !blank(this.$appConfig.SUPPORT_URL),
+        login_enabled: !this.$appConfig.DISABLE_LOGIN
       }
     },
     computed: {
